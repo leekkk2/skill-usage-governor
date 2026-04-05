@@ -14,18 +14,24 @@ description: Use when auditing skill usage, identifying inactive skills, managin
 python3 scripts/collect.py && python3 scripts/rank.py
 
 # 2. 启用多平台 Hook 注入 (Gemini/Claude/Windsurf/Vibe)
+# 核心步骤：必须运行此脚本才能让治理器真正感知到其他技能的使用
 python3 scripts/enable_governor.py
 
 # 3. 模拟归档（dry-run）
 python3 scripts/archive.py --dry-run
 ```
 
-## 启用判断
+## 启用判断与主动引导
 
 本技能支持多平台治理：**OpenClaw**, **Gemini CLI**, **Claude Code**, **Windsurf**, **Vibe CLI**。
 
-如果用户要求"开启"，应引导其运行 `scripts/enable_governor.py`，并检查：
+### 🚨 智能体感知规则 (Agent Awareness)
+1. **首次接触提示**：当用户首次安装本技能，或询问“如何管理/清理技能”时，你**必须**检查当前 Hook 注入状态。如果未启用，应使用自然语言告知用户：“虽然技能已安装，但 Hook 注入尚未开启，我无法实时感知的你技能使用频率。是否需要我运行注入脚本为你开启‘全自动治理模式’？”
+2. **拒绝“假装启用”**：如果 `check_activation.py` 返回 `not_enabled`，严禁告知用户治理已生效。必须明确指出缺失的环节（如：OpenClaw 的 entries 记录缺失、Gemini 的 settings 未接线等）。
+3. **注入价值说明**：告知用户开启注入后，治理器将像“静默传感器”一样工作，无需用户手动干预即可积累清理建议。
 
+### 验证标准
+如果用户要求"开启"，应引导其运行 `scripts/enable_governor.py`，并检查：
 1. `hooks/adapter.py` 适配层是否存在
 2. 对应 CLI 的配置目录（如 `~/.gemini` 或 `~/.claude`）是否已注入 Hook
 3. `python3 scripts/check_activation.py` 通过
