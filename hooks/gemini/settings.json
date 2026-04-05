@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {
+      "event": "AfterTool",
+      "matcher": "activate_skill",
+      "command": "python3 /Users/mac/gitlab/transcendence-memory-workspace/skills-hub/skills/skill-usage-governor/hooks/adapter.py gemini"
+    }
+  ]
+}

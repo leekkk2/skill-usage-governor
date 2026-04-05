@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "post-tool-use": [
+      {
+        "matcher": "activate_skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/mac/gitlab/transcendence-memory-workspace/skills-hub/skills/skill-usage-governor/hooks/adapter.py windsurf"
+          }
+        ]
+      }
+    ]
+  }
+}

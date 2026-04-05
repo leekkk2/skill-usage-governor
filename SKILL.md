@@ -10,36 +10,25 @@ description: Use when auditing skill usage, identifying inactive skills, managin
 ## Quick Start
 
 ```bash
-# 1. 采集使用数据
-python3 scripts/collect.py
+# 1. 采集使用数据并生成排名
+python3 scripts/collect.py && python3 scripts/rank.py
 
-# 2. 生成排名报告
-python3 scripts/rank.py
+# 2. 启用多平台 Hook 注入 (Gemini/Claude/Windsurf/Vibe)
+python3 scripts/enable_governor.py
 
-# 3. 查看报告
-cat data/report-latest.md
-
-# 4. 查看归档候选（dry-run，不做任何改动）
+# 3. 模拟归档（dry-run）
 python3 scripts/archive.py --dry-run
-
-# 5. 确认后执行真实归档
-python3 scripts/archive.py
-
-# 6. 恢复被归档的技能
-python3 scripts/restore.py --skill <name>
 ```
 
 ## 启用判断
 
-本技能有两种状态：**未开启** / **已开启**。
+本技能支持多平台治理：**OpenClaw**, **Gemini CLI**, **Claude Code**, **Windsurf**, **Vibe CLI**。
 
-如果用户要求"开启"，必须逐项验证（不能假装已开启）：
+如果用户要求"开启"，应引导其运行 `scripts/enable_governor.py`，并检查：
 
-1. 技能本体存在（`skills/skill-usage-governor/SKILL.md`）
-2. Hook 存在（`hooks/openclaw/handler.ts`）
-3. 配置已接线（`config/policy.yaml` 可读取）
-4. 已重启生效
-5. `python3 scripts/check_activation.py` 通过
+1. `hooks/adapter.py` 适配层是否存在
+2. 对应 CLI 的配置目录（如 `~/.gemini` 或 `~/.claude`）是否已注入 Hook
+3. `python3 scripts/check_activation.py` 通过
 
 全部通过后才能回复"已开启"。
 
