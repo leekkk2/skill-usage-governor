@@ -1,0 +1,8 @@
+{
+  "policy": "strict",
+  "whitelist": ["long-running-agent"],
+  "skillCalls": [
+    {"skill": "claude", "read": false, "path": "~/.openclaw/workspace/skills/claude/SKILL.md"},
+    {"skill": "long-running-agent", "read": false, "path": "~/.openclaw/workspace/skills/long-running-agent/SKILL.md"}
+  ]
+}

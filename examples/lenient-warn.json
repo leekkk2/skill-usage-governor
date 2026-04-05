@@ -1,0 +1,10 @@
+{
+  "policy": "lenient",
+  "skillCalls": [
+    {
+      "skill": "gemini",
+      "read": false,
+      "path": "~/.openclaw/workspace/skills/gemini/SKILL.md"
+    }
+  ]
+}

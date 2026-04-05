@@ -1,0 +1,18 @@
+protected_skills:
+  - skill-usage-governor
+  - long-running-agent
+  - self-improvement
+thresholds:
+  trailing_percentile: 0.34
+  max_total_uses_for_low_total_rule: 1
+weights:
+  uses_7d: 3
+  uses_30d: 2
+  total_uses: 1
+activation_weights:
+  activation_bonus: 5
+  activation_30d_bonus: 3
+  activation_7d_bonus: 2
+archive:
+  root: skills_archive
+  dry_run_default: true

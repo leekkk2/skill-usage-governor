@@ -1,0 +1,15 @@
+{
+  "policy": "strict",
+  "skillCalls": [
+    {
+      "skill": "codex",
+      "read": true,
+      "path": "~/.openclaw/workspace/skills/codex/SKILL.md"
+    },
+    {
+      "skill": "gemini",
+      "read": false,
+      "path": "~/.openclaw/workspace/skills/gemini/SKILL.md"
+    }
+  ]
+}
