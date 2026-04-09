@@ -16,7 +16,7 @@ CHECKPOINT_PATH_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_CHECKPOINT_PATH', '')
 WRITE_CHECKPOINT_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_WRITE_CHECKPOINT', '1').strip().lower()
 DEFAULT_CHECKPOINT = DATA / 'usage_events.checkpoint.json'
 
-DEFAULT_AGENTS_DIR = Path('/Users/zhangweiteng/.openclaw/agents')
+DEFAULT_AGENTS_DIR = Path.home() / '.openclaw' / 'agents'
 DEFAULT_SESSIONS_DIRS = [DEFAULT_AGENTS_DIR / 'main' / 'sessions']
 SESSIONS_DIRS_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSIONS_DIRS')
 SESSIONS_DIR_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSIONS_DIR')
@@ -315,18 +315,31 @@ def write_checkpoint(events, session_files):
     return checkpoint_path
 
 
-def iter_text_fragments(node):
+_MAX_FRAGMENT_LEN = 50_000  # 单个文本片段最大长度，防止超大输入
+_MAX_RECURSION_DEPTH = 10   # 最大递归深度，防止嵌套攻击
+
+
+def _sanitize_fragment(text: str) -> str:
+    """清洗文本片段，截断过长内容"""
+    if len(text) > _MAX_FRAGMENT_LEN:
+        text = text[:_MAX_FRAGMENT_LEN]
+    return text
+
+
+def iter_text_fragments(node, _depth=0):
+    if _depth > _MAX_RECURSION_DEPTH:
+        return
     if isinstance(node, str):
-        yield node
+        yield _sanitize_fragment(node)
         return
     if isinstance(node, list):
         for item in node:
-            yield from iter_text_fragments(item)
+            yield from iter_text_fragments(item, _depth + 1)
         return
     if isinstance(node, dict):
         for key in ('text', 'content', 'message', 'prompt', 'input', 'output', 'body'):
             if key in node:
-                yield from iter_text_fragments(node[key])
+                yield from iter_text_fragments(node[key], _depth + 1)
 
 
 def first_nonblank(*values):

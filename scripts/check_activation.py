@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from pathlib import Path
 
 _DEFAULT_OPENCLAW = Path.home() / '.openclaw'
@@ -21,18 +20,61 @@ def add_check(name: str, ok: bool, detail: str = '') -> None:
     CHECKS.append({'name': name, 'ok': ok, 'detail': detail})
 
 
+def _strip_json5_extras(text: str) -> str:
+    """安全地将 JSON5 风格文本转换为标准 JSON（去除注释和尾逗号）"""
+    import re as _re
+    # 去除单行注释（// ...），但不影响字符串内的 //
+    result = []
+    in_string = False
+    escape_next = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+            i += 1
+            continue
+        if ch == '\\' and in_string:
+            result.append(ch)
+            escape_next = True
+            i += 1
+            continue
+        if ch == '"' and not in_string:
+            in_string = True
+            result.append(ch)
+            i += 1
+            continue
+        if ch == '"' and in_string:
+            in_string = False
+            result.append(ch)
+            i += 1
+            continue
+        if not in_string and ch == '/' and i + 1 < len(text) and text[i + 1] == '/':
+            # 跳过到行尾
+            while i < len(text) and text[i] != '\n':
+                i += 1
+            continue
+        if not in_string and ch == '/' and i + 1 < len(text) and text[i + 1] == '*':
+            # 跳过块注释
+            i += 2
+            while i + 1 < len(text) and not (text[i] == '*' and text[i + 1] == '/'):
+                i += 1
+            i += 2
+            continue
+        result.append(ch)
+        i += 1
+    cleaned = ''.join(result)
+    # 去除尾逗号 (}, 或 ],)
+    cleaned = _re.sub(r',\s*([}\]])', r'\1', cleaned)
+    return cleaned
+
+
 def parse_json5_like(text: str) -> dict:
-    # minimal bridge using node since config is JSON5-ish
-    node_code = r'''
-const fs = require('fs');
-const vm = require('vm');
-const path = process.argv[1];
-const raw = fs.readFileSync(path, 'utf8');
-const obj = vm.runInNewContext('(' + raw + ')');
-console.log(JSON.stringify(obj));
-'''
-    out = subprocess.check_output(['node', '-e', node_code, str(CONFIG_PATH)], text=True)
-    return json.loads(out)
+    # 安全的纯 Python 解析：去除注释和尾逗号后用标准 json.loads
+    raw = Path(CONFIG_PATH).read_text(encoding='utf-8')
+    cleaned = _strip_json5_extras(raw)
+    return json.loads(cleaned)
 
 
 def main() -> int:

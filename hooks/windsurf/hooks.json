@@ -1,4 +1,5 @@
 {
+  "_comment": "Template: replace {{SKILL_DIR}} with actual skill install path via enable_governor.py",
   "hooks": {
     "post-tool-use": [
       {
@@ -6,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/mac/gitlab/transcendence-memory-workspace/skills-hub/skills/skill-usage-governor/hooks/adapter.py windsurf"
+            "command": "python3 {{SKILL_DIR}}/hooks/adapter.py windsurf"
           }
         ]
       }
