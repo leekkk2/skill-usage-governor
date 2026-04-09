@@ -77,6 +77,7 @@ python3 scripts/archive.py --dry-run
 | `references/policy-guide.md` | policy.yaml 字段详解 | 需要自定义配置时 |
 | `references/archive-safety.md` | 软归档保护机制详解 | 执行归档前 |
 | `hooks/openclaw/HOOK.md` | bootstrap hook 说明 | 安装/调试 hook 时 |
+| `references/security-audit-guide.md` | skills.sh 安全审计通过指南 | 发布前自查、修复审计警告时 |
 | `examples/` | 验证夹具 | 开发/测试时 |
 
 ## 验证基线
