@@ -1,46 +1,46 @@
-# 软归档安全机制 / Archive Safety
+# Archive Safety
 
-## 设计原则
+## Design Principles
 
-归档操作遵循"可恢复优先"原则 — 在任何环节出错时，用户都能恢复到归档前的状态。
+Archive operations follow a "recoverability first" principle — users can always restore to the pre-archive state if anything goes wrong.
 
-## 归档流程
+## Archive Workflow
 
 ```
-1. dry-run        → 列出归档候选，不做任何改动
-2. 用户确认        → agent 不能跳过确认步骤
-3. 移动文件        → skills/<name> → skills_archive/<name>
-4. 生成 manifest   → 记录来源路径、时间、恢复命令
-5. 恢复            → restore.py --skill <name> 反向操作
+1. dry-run        → List archive candidates without making any changes
+2. User confirms  → Agent must not skip the confirmation step
+3. Move files     → skills/<name> → skills_archive/<name>
+4. Generate manifest → Records source path, timestamp, and restore command
+5. Restore        → restore.py --skill <name> performs the reverse operation
 ```
 
-## 保护层
+## Protection Layers
 
-| 保护层 | 机制 |
-|--------|------|
-| **受保护白名单** | `policy.yaml` 的 `protected_skills` 列表中的技能永不进入归档候选 |
-| **dry-run 默认** | `archive.dry_run_default: true`，即使脚本直接运行也不会真实操作 |
-| **用户确认** | agent 必须向用户展示 dry-run 结果并获得确认后才执行 |
-| **manifest 记录** | 每次归档生成 JSON manifest，包含完整恢复信息 |
-| **可恢复** | `restore.py` 根据 manifest 将技能移回原位 |
+| Layer | Mechanism |
+|-------|-----------|
+| **Protected whitelist** | Skills listed in `policy.yaml` under `protected_skills` are never considered for archiving |
+| **Dry-run by default** | `archive.dry_run_default: true` — even direct script execution won't perform real operations |
+| **User confirmation** | Agent must show dry-run results and obtain user confirmation before executing |
+| **Manifest record** | Each archive generates a JSON manifest with complete restore information |
+| **Recoverable** | `restore.py` moves the skill back to its original location based on the manifest |
 
-## 什么不会发生
+## What Will Never Happen
 
-- 不会硬删除任何文件
-- 不会在用户未确认时执行归档
-- 不会归档受保护的技能
-- 不会在 dry-run 模式下修改文件系统
-- 不会丢失 manifest（manifest 存放在归档目录内）
+- Files will never be permanently deleted
+- Archiving will never execute without user confirmation
+- Protected skills will never be archived
+- The file system will never be modified in dry-run mode
+- Manifests will never be lost (stored inside the archive directory)
 
-## 恢复流程
+## Restore Workflow
 
 ```bash
-# 查看已归档的技能
+# List archived skills
 ls skills_archive/
 
-# 恢复指定技能
+# Restore a specific skill
 python3 scripts/restore.py --skill <name>
 
-# 恢复后验证
+# Verify after restore
 ls skills/<name>/SKILL.md
 ```

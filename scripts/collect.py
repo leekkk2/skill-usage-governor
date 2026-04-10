@@ -315,12 +315,12 @@ def write_checkpoint(events, session_files):
     return checkpoint_path
 
 
-_MAX_FRAGMENT_LEN = 50_000  # 单个文本片段最大长度，防止超大输入
-_MAX_RECURSION_DEPTH = 10   # 最大递归深度，防止嵌套攻击
+_MAX_FRAGMENT_LEN = 50_000  # Max length per text fragment to prevent oversized input
+_MAX_RECURSION_DEPTH = 10   # Max recursion depth to prevent nesting attacks
 
 
 def _sanitize_fragment(text: str) -> str:
-    """清洗文本片段，截断过长内容"""
+    """Sanitize text fragment by truncating oversized content"""
     if len(text) > _MAX_FRAGMENT_LEN:
         text = text[:_MAX_FRAGMENT_LEN]
     return text

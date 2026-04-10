@@ -21,9 +21,9 @@ def add_check(name: str, ok: bool, detail: str = '') -> None:
 
 
 def _strip_json5_extras(text: str) -> str:
-    """安全地将 JSON5 风格文本转换为标准 JSON（去除注释和尾逗号）"""
+    """Safely convert JSON5-style text to standard JSON (strip comments and trailing commas)"""
     import re as _re
-    # 去除单行注释（// ...），但不影响字符串内的 //
+    # Strip single-line comments (// ...) without affecting // inside strings
     result = []
     in_string = False
     escape_next = False
@@ -51,12 +51,12 @@ def _strip_json5_extras(text: str) -> str:
             i += 1
             continue
         if not in_string and ch == '/' and i + 1 < len(text) and text[i + 1] == '/':
-            # 跳过到行尾
+            # Skip to end of line
             while i < len(text) and text[i] != '\n':
                 i += 1
             continue
         if not in_string and ch == '/' and i + 1 < len(text) and text[i + 1] == '*':
-            # 跳过块注释
+            # Skip block comment
             i += 2
             while i + 1 < len(text) and not (text[i] == '*' and text[i + 1] == '/'):
                 i += 1
@@ -65,13 +65,13 @@ def _strip_json5_extras(text: str) -> str:
         result.append(ch)
         i += 1
     cleaned = ''.join(result)
-    # 去除尾逗号 (}, 或 ],)
+    # Remove trailing commas (}, or ],)
     cleaned = _re.sub(r',\s*([}\]])', r'\1', cleaned)
     return cleaned
 
 
 def parse_json5_like(text: str) -> dict:
-    # 安全的纯 Python 解析：去除注释和尾逗号后用标准 json.loads
+    # Safe pure-Python parsing: strip comments and trailing commas, then use standard json.loads
     raw = Path(CONFIG_PATH).read_text(encoding='utf-8')
     cleaned = _strip_json5_extras(raw)
     return json.loads(cleaned)

@@ -5,93 +5,93 @@ description: Use when auditing skill usage, identifying inactive skills, managin
 
 ## What This Skill Does
 
-治理 `skills/` 目录下的技能生命周期：统计使用频率、识别冷门技能、给出整理建议、执行可恢复的软归档。
+Governs the lifecycle of skills under the `skills/` directory: tracks usage frequency, identifies cold (inactive) skills, provides cleanup recommendations, and performs recoverable soft-archiving.
 
 ## Quick Start
 
 ```bash
-# 1. 采集使用数据并生成排名
+# 1. Collect usage data and generate rankings
 python3 scripts/collect.py && python3 scripts/rank.py
 
-# 2. 启用多平台 Hook 注入 (Gemini/Claude/Windsurf/Vibe)
-# 核心步骤：必须运行此脚本才能让治理器真正感知到其他技能的使用
+# 2. Enable multi-platform hook injection (Gemini/Claude/Windsurf/Vibe)
+# Critical step: this script must be run for the governor to detect skill usage
 python3 scripts/enable_governor.py
 
-# 3. 模拟归档（dry-run）
+# 3. Dry-run archive (no actual changes)
 python3 scripts/archive.py --dry-run
 ```
 
-## 启用判断与主动引导
+## Activation & Proactive Guidance
 
-本技能支持多平台治理：**OpenClaw**, **Gemini CLI**, **Claude Code**, **Windsurf**, **Vibe CLI**。
+This skill supports multi-platform governance: **OpenClaw**, **Gemini CLI**, **Claude Code**, **Windsurf**, **Vibe CLI**.
 
-### 🚨 智能体感知规则 (Agent Awareness)
-1. **首次接触提示**：当用户首次安装本技能，或询问“如何管理/清理技能”时，你**必须**检查当前 Hook 注入状态。如果未启用，应使用自然语言告知用户：“虽然技能已安装，但 Hook 注入尚未开启，我无法实时感知的你技能使用频率。是否需要我运行注入脚本为你开启‘全自动治理模式’？”
-2. **拒绝“假装启用”**：如果 `check_activation.py` 返回 `not_enabled`，严禁告知用户治理已生效。必须明确指出缺失的环节（如：OpenClaw 的 entries 记录缺失、Gemini 的 settings 未接线等）。
-3. **注入价值说明**：告知用户开启注入后，治理器将像“静默传感器”一样工作，无需用户手动干预即可积累清理建议。
+### 🚨 Agent Awareness Rules
+1. **First-contact prompt**: When the user first installs this skill or asks “how to manage/clean up skills”, you **must** check the current hook injection status. If not enabled, inform the user in natural language: “The skill is installed, but hook injection is not yet active — I cannot track your skill usage in real time. Would you like me to run the injection script to enable fully automatic governance?”
+2. **No false activation claims**: If `check_activation.py` returns `not_enabled`, you must **never** tell the user that governance is active. Clearly identify the missing component (e.g., OpenClaw entries missing, Gemini settings not wired, etc.).
+3. **Injection value proposition**: Inform the user that once injection is enabled, the governor works like a “silent sensor” — accumulating cleanup recommendations without manual intervention.
 
-### 验证标准
-如果用户要求"开启"，应引导其运行 `scripts/enable_governor.py`，并检查：
-1. `hooks/adapter.py` 适配层是否存在
-2. 对应 CLI 的配置目录（如 `~/.gemini` 或 `~/.claude`）是否已注入 Hook
-3. `python3 scripts/check_activation.py` 通过
+### Verification Criteria
+If the user requests activation, guide them to run `scripts/enable_governor.py`, then verify:
+1. The adapter layer `hooks/adapter.py` exists
+2. The corresponding CLI config directory (e.g., `~/.gemini` or `~/.claude`) has the hook injected
+3. `python3 scripts/check_activation.py` passes
 
-全部通过后才能回复"已开启"。
+Only confirm “activated” after all checks pass.
 
-## 核心输出
+## Core Output
 
-报告包含以下信息：
+Reports contain the following information:
 
-| 内容 | 来源 |
-|------|------|
-| 技能总数 | `data/usage_stats.json` |
-| 最近常用技能（7d/30d 加权） | `data/report-latest.md` |
-| 较少使用的技能 | 同上 |
-| 归档候选 | `archive.py --dry-run` |
-| 治理状态 | `check_activation.py` |
+| Content | Source |
+|---------|--------|
+| Total skill count | `data/usage_stats.json` |
+| Recently active skills (7d/30d weighted) | `data/report-latest.md` |
+| Infrequently used skills | Same as above |
+| Archive candidates | `archive.py --dry-run` |
+| Governance status | `check_activation.py` |
 
-详细的报告样本和字段说明见 `references/output-samples.md`。
+See `references/output-samples.md` for detailed report samples and field descriptions.
 
-## 安全边界
+## Safety Boundaries
 
-1. **永不硬删除** — 只做可恢复的软归档
-2. **归档前必须 dry-run** — `policy.yaml` 默认 `dry_run_default: true`
-3. **归档必须可恢复** — 通过 manifest 文件 + `restore.py`
-4. **冷技能只建议，不自动操作** — 无用户确认不做破坏性操作
-5. **受保护技能白名单** — `skill-usage-governor`、`long-running-agent`、`self-improvement` 不进入归档判断
+1. **Never hard-delete** — only recoverable soft-archiving
+2. **Dry-run before archiving** — `policy.yaml` defaults to `dry_run_default: true`
+3. **Archives must be recoverable** — via manifest files + `restore.py`
+4. **Cold skills are only suggested, never auto-acted upon** — no destructive actions without user confirmation
+5. **Protected skills whitelist** — `skill-usage-governor`, `long-running-agent`, `self-improvement` are excluded from archive evaluation
 
-## 对外表达
+## User-Facing Communication
 
-面向用户时使用自然语言，不暴露变量名、统计字段名或脚本细节。
+When communicating with users, use natural language. Do not expose variable names, stat field names, or script internals.
 
-示例：
-- 好："最近 7 天你最常用的是 tmux 和 codex，rag-everything-enhancer 已经 30 天没用过了"
-- 坏："activation_count_7d: 12, uses_30d: 0, trailing_percentile: 0.34"
+Examples:
+- Good: “Your most-used skills in the past 7 days are tmux and codex. rag-everything-enhancer hasn’t been used in 30 days.”
+- Bad: “activation_count_7d: 12, uses_30d: 0, trailing_percentile: 0.34”
 
 ## Files in this skill
 
-| 文件 | 用途 | 何时查看 |
-|------|------|---------|
-| `config/policy.yaml` | 权重、阈值、受保护列表 | 需要调整策略时 |
-| `references/output-samples.md` | 报告和 JSON 样本 | 想了解输出格式时 |
-| `references/policy-guide.md` | policy.yaml 字段详解 | 需要自定义配置时 |
-| `references/archive-safety.md` | 软归档保护机制详解 | 执行归档前 |
-| `hooks/openclaw/HOOK.md` | bootstrap hook 说明 | 安装/调试 hook 时 |
-| `references/security-audit-guide.md` | skills.sh 安全审计通过指南 | 发布前自查、修复审计警告时 |
-| `examples/` | 验证夹具 | 开发/测试时 |
+| File | Purpose | When to check |
+|------|---------|---------------|
+| `config/policy.yaml` | Weights, thresholds, protected list | When adjusting policy |
+| `references/output-samples.md` | Report and JSON samples | When learning output format |
+| `references/policy-guide.md` | policy.yaml field reference | When customizing config |
+| `references/archive-safety.md` | Soft-archive safety mechanisms | Before performing archival |
+| `hooks/openclaw/HOOK.md` | Bootstrap hook description | When installing/debugging hooks |
+| `references/security-audit-guide.md` | skills.sh security audit pass guide | Pre-release self-check, fixing audit warnings |
+| `examples/` | Test fixtures | During development/testing |
 
-## 验证基线
+## Verification Baseline
 
-至少验证：
-- `collect.py` + `rank.py` 能生成 `data/usage_stats.json` 和 `data/report-latest.md`
-- `archive.py --dry-run` 正常且不改动目录
-- 真实归档后 `restore.py --skill <name>` 可恢复
-- `check_activation.py` 能正确判断启用状态
+At minimum, verify:
+- `collect.py` + `rank.py` can generate `data/usage_stats.json` and `data/report-latest.md`
+- `archive.py --dry-run` runs normally without modifying any directories
+- After a real archive, `restore.py --skill <name>` can restore the skill
+- `check_activation.py` correctly determines activation status
 
-## 退出条件
+## Exit Criteria
 
-满足以下条件即可视为当前任务完成：
-- 已完成使用情况采集
-- 已生成结果与报告
-- 已完成 dry-run 或真实归档/恢复验证
-- 已给出用户可读结论
+The current task is considered complete when:
+- Usage data collection is finished
+- Results and reports have been generated
+- Dry-run or real archive/restore verification is complete
+- A user-readable conclusion has been provided

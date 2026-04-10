@@ -98,7 +98,7 @@ def setup_runtime_hooks():
     shutil.copy2(hook_src / 'handler.ts', hook_dst / 'handler.ts')
 
 def render_hook_templates(skill_dir: Path):
-    """将 hook 模板中的 {{SKILL_DIR}} 占位符替换为实际技能安装路径"""
+    """Replace {{SKILL_DIR}} placeholders in hook templates with the actual skill install path"""
     template_dirs = ['claude', 'gemini', 'windsurf', 'vibe']
     template_files = {
         'claude': 'hooks.json',
@@ -114,14 +114,14 @@ def render_hook_templates(skill_dir: Path):
         if '{{SKILL_DIR}}' in content:
             rendered = content.replace('{{SKILL_DIR}}', str(skill_dir))
             template_file.write_text(rendered, encoding='utf-8')
-            print(f"  渲染 hook 模板: {template_file}")
+            print(f"  Rendered hook template: {template_file}")
 
 
 def main() -> int:
     print(f"--- Skill Usage Governor Activation (OpenClaw) ---")
 
     workspace_skill_dir = sync_skill_to_workspace()
-    # 渲染 hook 模板，将占位符替换为实际安装路径
+    # Render hook templates, replacing placeholders with actual install paths
     render_hook_templates(workspace_skill_dir)
     setup_runtime_hooks()
 

@@ -1,443 +1,444 @@
-# skills.sh 安全审计通过指南
+# skills.sh Security Audit Pass Guide
 
-> 本文档整理了 skills.sh 平台三大安全审计引擎（Agent Trust Hub、Socket、Snyk）的完整检查项、
-> 评判标准与修复指南，供后续开发时遵守以确保审计全部 Pass。
+> This document compiles the complete checklist, evaluation criteria, and remediation guide
+> for the three security audit engines on the skills.sh platform (Agent Trust Hub, Socket, Snyk),
+> to ensure all audits pass during future development.
 >
-> 最后更新：2026-04-09
+> Last updated: 2026-04-09
 
 ---
 
-## 目录
+## Table of Contents
 
-1. [审计总览](#1-审计总览)
-2. [Agent Trust Hub（Gen）](#2-agent-trust-hubgen)
+1. [Audit Overview](#1-audit-overview)
+2. [Agent Trust Hub (Gen)](#2-agent-trust-hubgen)
 3. [Socket](#3-socket)
 4. [Snyk](#4-snyk)
 5. [OWASP Agentic Skills Top 10 (AST10)](#5-owasp-agentic-skills-top-10-ast10)
-6. [开发自查清单](#6-开发自查清单)
-7. [已知修复记录](#7-已知修复记录)
+6. [Developer Self-Check Checklist](#6-developer-self-check-checklist)
+7. [Known Fix Records](#7-known-fix-records)
 
 ---
 
-## 1. 审计总览
+## 1. Audit Overview
 
-skills.sh 对每个技能发布时运行三个独立扫描引擎，并在技能详情页展示结果：
+skills.sh runs three independent scanning engines on each skill at publish time and displays results on the skill detail page:
 
-| 引擎 | 提供方 | 侧重点 | 结果级别 |
-|------|--------|--------|---------|
-| Agent Trust Hub | Gen Digital | 内容分析、行为安全、代码执行风险 | Pass / Warn / Fail |
-| Socket | Socket.dev | 供应链安全、代码质量、异常模式 | Pass / Warn / Fail |
-| Snyk | Snyk | 依赖漏洞、已知 CVE、代码缺陷 | Pass / Warn / Fail |
+| Engine | Provider | Focus | Result Levels |
+|--------|----------|-------|---------------|
+| Agent Trust Hub | Gen Digital | Content analysis, behavioral safety, code execution risk | Pass / Warn / Fail |
+| Socket | Socket.dev | Supply chain security, code quality, anomaly patterns | Pass / Warn / Fail |
+| Snyk | Snyk | Dependency vulnerabilities, known CVEs, code defects | Pass / Warn / Fail |
 
-### 通过条件
+### Pass Conditions
 
-- **Pass**：无 CRITICAL/HIGH 发现，风险等级 LOW
-- **Warn**：存在 MEDIUM 或多个 LOW 发现
-- **Fail**：存在 CRITICAL 或 HIGH 发现，或综合评分低于阈值
+- **Pass**: No CRITICAL/HIGH findings, risk level LOW
+- **Warn**: MEDIUM findings or multiple LOW findings present
+- **Fail**: CRITICAL or HIGH findings present, or composite score below threshold
 
-### 严重等级定义
+### Severity Definitions
 
-| 等级 | 含义 |
-|------|------|
-| CRITICAL | agent 被劫持或数据外泄 |
-| HIGH | 危险操作或凭证暴露 |
-| MEDIUM | 信任/质量缺口 |
-| LOW | 最佳实践违规 |
-| INFO | 观察性提示 |
+| Level | Meaning |
+|-------|---------|
+| CRITICAL | Agent hijacking or data exfiltration |
+| HIGH | Dangerous operations or credential exposure |
+| MEDIUM | Trust/quality gaps |
+| LOW | Best practice violations |
+| INFO | Observational notes |
 
 ---
 
-## 2. Agent Trust Hub（Gen）
+## 2. Agent Trust Hub (Gen)
 
-### 2.1 扫描流水线
+### 2.1 Scanning Pipeline
 
-Agent Trust Hub 使用多阶段验证流水线：
+Agent Trust Hub uses a multi-stage verification pipeline:
 
-1. **静态扫描**：模式匹配 + 可选 Semgrep 集成
-2. **Hook 检测**：发现并分析安装脚本（post_install.sh 等）
-3. **导入链追踪**：构建完整依赖图，追溯代码来源
-4. **LLM 审计**：Claude 分析行为不一致（如声称是 formatter 却发起网络请求）
-5. **注册表交叉引用**：与 skills.sh 社区数据库比对
+1. **Static scan**: Pattern matching + optional Semgrep integration
+2. **Hook detection**: Discovers and analyzes install scripts (post_install.sh, etc.)
+3. **Import chain tracing**: Builds a complete dependency graph, traces code origins
+4. **LLM audit**: Claude analyzes behavioral inconsistencies (e.g., a skill claiming to be a formatter but making network requests)
+5. **Registry cross-reference**: Compares against the skills.sh community database
 
-### 2.2 风险类别
+### 2.2 Risk Categories
 
-| 类别 | 标识 | 说明 |
-|------|------|------|
-| 命令执行 | COMMAND_EXECUTION | subprocess、shell 调用、vm.runInNewContext 等 |
-| 远程代码执行 | REMOTE_CODE_EXECUTION | eval、exec、动态加载远程代码 |
-| 数据外泄 | DATA_EXFILTRATION | 访问敏感文件、网络外传 |
-| Prompt 注入 | PROMPT_INJECTION | SKILL.md 中嵌入操控指令 |
-| 上下文投毒 | CONTEXT_POISONING | 嵌入指令改写 agent 身份/权限 |
+| Category | Identifier | Description |
+|----------|-----------|-------------|
+| Command Execution | COMMAND_EXECUTION | subprocess, shell calls, vm.runInNewContext, etc. |
+| Remote Code Execution | REMOTE_CODE_EXECUTION | eval, exec, dynamic loading of remote code |
+| Data Exfiltration | DATA_EXFILTRATION | Accessing sensitive files, network exfiltration |
+| Prompt Injection | PROMPT_INJECTION | Manipulative instructions embedded in SKILL.md |
+| Context Poisoning | CONTEXT_POISONING | Embedded instructions that alter agent identity/permissions |
 
-### 2.3 具体检查项与通过标准
+### 2.3 Specific Checks and Pass Criteria
 
-#### 2.3.1 动态代码执行（CRITICAL）
+#### 2.3.1 Dynamic Code Execution (CRITICAL)
 
-**检查**：是否使用 `eval()`、`exec()`、`vm.runInNewContext()`、`Function()` 或类似机制执行动态代码。
+**Check**: Whether `eval()`, `exec()`, `vm.runInNewContext()`, `Function()`, or similar mechanisms are used for dynamic code execution.
 
-**通过标准**：
-- 不使用任何动态代码执行机制
-- 配置文件解析使用安全的静态解析器（如 `json.loads`、`yaml.safe_load`）
-- 不通过 subprocess 调用解释器执行动态构造的代码字符串
+**Pass criteria**:
+- No dynamic code execution mechanisms used
+- Config file parsing uses safe static parsers (e.g., `json.loads`, `yaml.safe_load`)
+- No dynamically constructed code strings executed via subprocess interpreters
 
-**修复方案**：用纯语言安全解析替代。例如 JSON5 可用正则去注释/尾逗号后 `json.loads`。
+**Remediation**: Replace with safe language-native parsing. For example, JSON5 can be handled by stripping comments/trailing commas with regex, then using `json.loads`.
 
-#### 2.3.2 硬编码路径与元数据泄露（MEDIUM）
+#### 2.3.2 Hardcoded Paths and Metadata Leakage (MEDIUM)
 
-**检查**：源码中是否包含硬编码的绝对路径（如 `/Users/xxx/...`、`/home/xxx/...`），泄露开发者环境信息。
+**Check**: Whether source code contains hardcoded absolute paths (e.g., `/Users/xxx/...`, `/home/xxx/...`) that leak developer environment information.
 
-**通过标准**：
-- 所有路径使用动态计算：`Path.home()`、`Path(__file__).resolve()`、环境变量
-- 配置文件使用模板占位符（如 `{{SKILL_DIR}}`），安装时渲染
-- 不暴露任何开发者个人目录结构
+**Pass criteria**:
+- All paths computed dynamically: `Path.home()`, `Path(__file__).resolve()`, environment variables
+- Config files use template placeholders (e.g., `{{SKILL_DIR}}`), rendered at install time
+- No developer-specific directory structures exposed
 
-#### 2.3.3 Subprocess 命令执行（MEDIUM）
+#### 2.3.3 Subprocess Command Execution (MEDIUM)
 
-**检查**：是否使用 `subprocess`、`os.system`、`os.popen` 等执行系统命令。
+**Check**: Whether `subprocess`, `os.system`, `os.popen`, etc. are used to execute system commands.
 
-**通过标准**：
-- 命令执行必须与技能核心功能直接相关
-- 使用列表形式传参（`subprocess.run([...])` 而非 shell 字符串拼接）
-- 不使用 `shell=True`
-- 命令参数不包含用户可控输入（或已做严格校验）
-- 执行的脚本路径由代码动态计算，非硬编码
+**Pass criteria**:
+- Command execution is directly related to core skill functionality
+- Arguments passed as lists (`subprocess.run([...])` instead of shell string concatenation)
+- `shell=True` not used
+- Command arguments do not contain user-controllable input (or are strictly validated)
+- Script paths computed dynamically by code, not hardcoded
 
-#### 2.3.4 数据访问边界（MEDIUM）
+#### 2.3.4 Data Access Boundaries (MEDIUM)
 
-**检查**：是否访问其他 AI 平台的会话日志、配置文件等敏感数据。
+**Check**: Whether the skill accesses session logs, config files, or other sensitive data from other AI platforms.
 
-**通过标准**：
-- 数据访问范围与技能功能说明一致
-- 不访问超出声明范围的文件
-- 读取路径使用 `Path.home()` 动态计算
-- 不将敏感数据外传到网络
+**Pass criteria**:
+- Data access scope matches the skill's functional description
+- No files accessed beyond the declared scope
+- Read paths computed dynamically using `Path.home()`
+- Sensitive data not transmitted over the network
 
-#### 2.3.5 持久化机制（MEDIUM）
+#### 2.3.5 Persistence Mechanisms (MEDIUM)
 
-**检查**：是否修改其他工具的配置文件实现自动执行。
+**Check**: Whether the skill modifies other tools' config files to achieve auto-execution.
 
-**通过标准**：
-- 持久化行为在文档中明确声明
-- 需要用户显式运行启用脚本（如 `enable_governor.py`）
-- 不在安装时自动注入 hook
-- 提供禁用/卸载方式
+**Pass criteria**:
+- Persistence behavior explicitly declared in documentation
+- User must explicitly run an enablement script (e.g., `enable_governor.py`)
+- Hooks not auto-injected at install time
+- Disable/uninstall mechanism provided
 
-#### 2.3.6 输入清洗与 Prompt Injection 防护（MEDIUM）
+#### 2.3.6 Input Sanitization and Prompt Injection Protection (MEDIUM)
 
-**检查**：处理外部数据（会话日志、用户输入等）时是否有清洗机制。
+**Check**: Whether sanitization mechanisms exist when processing external data (session logs, user input, etc.).
 
-**通过标准**：
-- 文本片段有长度限制，防止超大输入攻击
-- 递归解析有深度限制，防止嵌套攻击
-- 不将未清洗的外部文本直接用于决策逻辑
-- 使用边界标记区分指令与内容
+**Pass criteria**:
+- Text fragments have length limits to prevent oversized input attacks
+- Recursive parsing has depth limits to prevent nesting attacks
+- Unsanitized external text is not directly used in decision logic
+- Boundary markers separate instructions from content
 
-#### 2.3.7 凭证处理（HIGH）
+#### 2.3.7 Credential Handling (HIGH)
 
-**检查**：是否硬编码密钥、API Key、密码、连接字符串。
+**Check**: Whether secrets, API keys, passwords, or connection strings are hardcoded.
 
-**通过标准**：
-- 不在源码中包含任何明文凭证
-- 使用环境变量或安全存储
-- `.env` 文件在 `.gitignore` 中
-- 不在日志或输出中打印凭证
+**Pass criteria**:
+- No plaintext credentials in source code
+- Environment variables or secure storage used
+- `.env` files listed in `.gitignore`
+- Credentials not printed in logs or output
 
-### 2.4 签名与认证机制
+### 2.4 Signing and Attestation Mechanism
 
-通过审计后，Agent Trust Hub 会：
+After passing audit, Agent Trust Hub will:
 
-1. 构建所有文件的 SHA-256 Merkle 树
-2. 使用 Ed25519 密钥签名根哈希
-3. 生成 attestation 与技能一起存储
-4. 加载时重新计算 Merkle 根并校验签名（任何文件修改会破坏完整性）
+1. Build a SHA-256 Merkle tree of all files
+2. Sign the root hash with an Ed25519 key
+3. Generate an attestation stored alongside the skill
+4. Recompute the Merkle root and verify the signature on load (any file modification breaks integrity)
 
 ---
 
 ## 3. Socket
 
-### 3.1 评分维度
+### 3.1 Scoring Dimensions
 
-Socket 使用 5 个维度评分（满分 100），综合评分越高越好：
+Socket uses 5 scoring dimensions (max 100 each); higher composite score is better:
 
-| 维度 | 说明 | 检查内容 |
-|------|------|---------|
-| Supply Chain | 供应链安全 | 依赖来源、构建可信度、发布者身份 |
-| Vulnerability | 已知漏洞 | CVE、已知恶意模式 |
-| Quality | 代码质量 | 代码复杂度、可维护性 |
-| Maintenance | 维护状态 | 最近更新、发布频率、维护者活跃度 |
-| License | 许可合规 | 许可证存在、兼容性 |
+| Dimension | Description | Checks |
+|-----------|-------------|--------|
+| Supply Chain | Supply chain security | Dependency sources, build trustworthiness, publisher identity |
+| Vulnerability | Known vulnerabilities | CVEs, known malicious patterns |
+| Quality | Code quality | Code complexity, maintainability |
+| Maintenance | Maintenance status | Recent updates, release frequency, maintainer activity |
+| License | License compliance | License presence, compatibility |
 
-### 3.2 告警类型
+### 3.2 Alert Types
 
-Socket 支持 60+ 检测类型，5 大类别：
+Socket supports 60+ detection types across 5 major categories:
 
-| 类别 | 典型告警 |
-|------|---------|
-| 供应链风险 | 安装脚本、混淆代码、新创建的发布者账户 |
-| 质量问题 | 代码质量低、无测试 |
-| 维护问题 | 废弃包、长期未更新 |
-| 已知漏洞 | CVE 匹配 |
-| 许可问题 | 缺少许可证、不兼容许可 |
+| Category | Typical Alerts |
+|----------|---------------|
+| Supply chain risks | Install scripts, obfuscated code, newly created publisher accounts |
+| Quality issues | Low code quality, no tests |
+| Maintenance issues | Abandoned packages, long-term inactivity |
+| Known vulnerabilities | CVE matches |
+| License issues | Missing license, incompatible licenses |
 
-### 3.3 异常检测规则（本技能相关）
+### 3.3 Anomaly Detection Rules (Relevant to This Skill)
 
-以下是 Socket 对 agent 技能特别关注的异常模式：
+The following are anomaly patterns Socket specifically watches for in agent skills:
 
-#### 3.3.1 硬编码绝对路径脚本执行（LOW-MEDIUM）
+#### 3.3.1 Hardcoded Absolute Path Script Execution (LOW-MEDIUM)
 
-**触发条件**：
-- Hook 配置中包含硬编码绝对路径（如 `/Users/xxx/path/to/script.py`）
-- 通过 hook 触发本地 Python/Node 脚本执行
+**Trigger conditions**:
+- Hook config contains hardcoded absolute paths (e.g., `/Users/xxx/path/to/script.py`)
+- Local Python/Node scripts triggered via hooks
 
-**评判因素**：
-- Confidence（置信度）：40%-65%
-- Severity（严重度）：50%-65%
+**Evaluation factors**:
+- Confidence: 40%-65%
+- Severity: 50%-65%
 
-**通过标准**：
-- 使用相对路径或模板占位符
-- 不包含指向特定开发者环境的绝对路径
-- 脚本路径由安装程序在部署时动态生成
+**Pass criteria**:
+- Use relative paths or template placeholders
+- No absolute paths pointing to specific developer environments
+- Script paths dynamically generated by the installer at deployment time
 
-#### 3.3.2 Hook 篡改风险
+#### 3.3.2 Hook Tampering Risk
 
-**触发条件**：
-- Event-driven hook 触发代码执行
-- 缺少可见的访问控制或完整性校验
+**Trigger conditions**:
+- Event-driven hooks triggering code execution
+- Lack of visible access control or integrity verification
 
-**通过标准**：
-- Hook 配置文件是模板，安装时渲染
-- 被触发的脚本内容可审计
-- Hook 不会在非预期事件下触发
+**Pass criteria**:
+- Hook config files are templates, rendered at install time
+- Triggered script contents are auditable
+- Hooks do not fire on unexpected events
 
-#### 3.3.3 供应链依赖风险
+#### 3.3.3 Supply Chain Dependency Risk
 
-**触发条件**：
-- 依赖于外部脚本文件（如 `adapter.py`）的完整性
-- 无文件完整性校验机制
+**Trigger conditions**:
+- Dependency on external script file integrity (e.g., `adapter.py`)
+- No file integrity verification mechanism
 
-**通过标准**：
-- 关键脚本内容在仓库中可见、可审计
-- 安装流程不从外部下载执行未知代码
-- 文件路径基于安装位置动态计算
+**Pass criteria**:
+- Critical script contents visible and auditable in the repository
+- Install process does not download and execute unknown code from external sources
+- File paths computed dynamically based on install location
 
-### 3.4 零告警目标
+### 3.4 Zero-Alert Target
 
-**理想状态**：0 alerts，综合评分接近 1.0
+**Ideal state**: 0 alerts, composite score approaching 1.0
 
-**实际可接受**：仅存在 INFO 级别观察项，无 LOW 及以上告警
+**Acceptable**: Only INFO-level observations, no LOW or above alerts
 
 ---
 
 ## 4. Snyk
 
-### 4.1 检查范围
+### 4.1 Scan Scope
 
-Snyk 主要检查：
+Snyk primarily checks:
 
-| 检查项 | 说明 |
-|--------|------|
-| 依赖漏洞 | 扫描 package.json、requirements.txt 等依赖文件中的已知 CVE |
-| 代码质量 | 代码中的安全缺陷模式 |
-| 许可合规 | 依赖的许可证合规性 |
-| 配置安全 | 配置文件中的安全问题 |
+| Check | Description |
+|-------|-------------|
+| Dependency vulnerabilities | Scans dependency files (package.json, requirements.txt, etc.) for known CVEs |
+| Code quality | Security defect patterns in code |
+| License compliance | Dependency license compliance |
+| Configuration security | Security issues in config files |
 
-### 4.2 警告代码
+### 4.2 Warning Codes
 
-| 代码 | 含义 |
-|------|------|
-| W007 | 不安全的凭证处理 |
-| W011 | 第三方内容暴露（获取不可信内容影响 agent 决策） |
-| W012 | 不可验证的外部依赖 |
+| Code | Meaning |
+|------|---------|
+| W007 | Insecure credential handling |
+| W011 | Third-party content exposure (fetching untrusted content that influences agent decisions) |
+| W012 | Unverifiable external dependencies |
 
-### 4.3 通过标准
+### 4.3 Pass Criteria
 
-- 无已知 CVE 匹配
-- 无 CRITICAL/HIGH 代码缺陷
-- 依赖链干净
-- 许可证合规
+- No known CVE matches
+- No CRITICAL/HIGH code defects
+- Clean dependency chain
+- License compliant
 
 ---
 
 ## 5. OWASP Agentic Skills Top 10 (AST10)
 
-以下是 OWASP 2026 版 Agentic Skills 十大安全风险，skills.sh 审计参考了这些标准。
+The following is the OWASP 2026 edition of Agentic Skills top 10 security risks, referenced by skills.sh audits.
 
-### AST01: 恶意技能（CRITICAL）
+### AST01: Malicious Skills (CRITICAL)
 
-**风险**：恶意代码直接注入技能注册表。
+**Risk**: Malicious code directly injected into the skill registry.
 
-**预防**：
-- 实施 Merkle-root 签名
-- 发布和安装时进行自动化行为扫描
-- 维护已验证发布者白名单
-- 要求 ed25519 代码签名
+**Prevention**:
+- Implement Merkle-root signing
+- Perform automated behavioral scanning at publish and install time
+- Maintain a verified publisher whitelist
+- Require ed25519 code signing
 
-### AST02: 供应链攻击（CRITICAL）
+### AST02: Supply Chain Attacks (CRITICAL)
 
-**风险**：技能构建流水线、仓库或依赖链被污染。
+**Risk**: Skill build pipelines, repositories, or dependency chains compromised.
 
-**预防**：
-- 发布前强制代码签名
-- 实施注册表级透明日志
-- 要求 SLSA 框架的来源证明
-- 所有嵌套依赖固定到不可变哈希
+**Prevention**:
+- Enforce code signing before publishing
+- Implement registry-level transparency logs
+- Require SLSA framework provenance attestations
+- Pin all nested dependencies to immutable hashes
 
-### AST03: 过度授权（HIGH）
+### AST03: Over-Permissioning (HIGH)
 
-**风险**：技能请求超出功能需要的权限（文件系统、shell、网络）。
+**Risk**: Skills requesting permissions beyond functional needs (file system, shell, network).
 
-**预防**：
-- 在技能 schema 中强制最小权限清单
-- 为敏感文件创建显式拒绝列表（SOUL.md、MEMORY.md、AGENTS.md）
-- 默认拒绝 shell 访问
-- 验证所有权限请求是否与功能范围一致
+**Prevention**:
+- Enforce minimum privilege manifests in skill schemas
+- Create explicit deny lists for sensitive files (SOUL.md, MEMORY.md, AGENTS.md)
+- Default-deny shell access
+- Verify all permission requests align with functional scope
 
-### AST04: 不安全的元数据（HIGH）
+### AST04: Insecure Metadata (HIGH)
 
-**风险**：误导性的技能元数据（仿冒、错误的风险等级标注）。
+**Risk**: Misleading skill metadata (impersonation, incorrect risk level labels).
 
-**预防**：
-- 发布时进行静态分析和 manifest lint
-- 通过 DID 锚定验证发布者身份
-- 标记可疑的相似技能名称
+**Prevention**:
+- Perform static analysis and manifest linting at publish time
+- Verify publisher identity via DID anchoring
+- Flag suspiciously similar skill names
 
-### AST05: 不安全的反序列化（HIGH）
+### AST05: Insecure Deserialization (HIGH)
 
-**风险**：YAML/JSON 解析中的代码执行（gadget chain、unsafe tag）。
+**Risk**: Code execution in YAML/JSON parsing (gadget chains, unsafe tags).
 
-**预防**：
-- 禁用危险 YAML 标签（`!!python/object`、`!!ruby/object`）
-- 执行前用严格 JSON Schema 验证配置
-- 使用安全解析器：`yaml.safe_load()`、`json.loads()`
-- 在受限环境中沙箱化反序列化
+**Prevention**:
+- Disable dangerous YAML tags (`!!python/object`, `!!ruby/object`)
+- Validate config with strict JSON Schema before execution
+- Use safe parsers: `yaml.safe_load()`, `json.loads()`
+- Sandbox deserialization in restricted environments
 
-### AST06: 弱隔离（HIGH）
+### AST06: Weak Isolation (HIGH)
 
-**风险**：运行时隔离不足，技能可访问主机文件系统和网络。
+**Risk**: Insufficient runtime isolation; skills can access host file system and network.
 
-**预防**：
-- 默认使用 Docker/容器隔离执行技能
-- 实施网络分段和 syscall 白名单
-- 文件系统访问限制为声明的路径
+**Prevention**:
+- Default to Docker/container isolation for skill execution
+- Implement network segmentation and syscall whitelists
+- Restrict file system access to declared paths
 
-### AST07: 更新漂移（MEDIUM）
+### AST07: Update Drift (MEDIUM)
 
-**风险**：未固定版本的技能被静默替换为恶意更新。
+**Risk**: Unpinned skill versions silently replaced with malicious updates.
 
-**预防**：
-- 所有技能版本固定到特定不可变哈希
-- 更新前要求显式用户批准
-- 使用 lock 文件锁定嵌套依赖
+**Prevention**:
+- Pin all skill versions to specific immutable hashes
+- Require explicit user approval before updates
+- Use lock files to pin nested dependencies
 
-### AST08: 扫描不足（MEDIUM）
+### AST08: Insufficient Scanning (MEDIUM)
 
-**风险**：仅依赖模式匹配的扫描工具，无法检测语义攻击。
+**Risk**: Relying solely on pattern-matching scanning tools that cannot detect semantic attacks.
 
-**预防**：
-- 实施语义 + 行为多工具扫描流水线
-- 结合静态分析（AST）、动态分析（沙箱）和行为异常检测
+**Prevention**:
+- Implement semantic + behavioral multi-tool scanning pipelines
+- Combine static analysis (AST), dynamic analysis (sandbox), and behavioral anomaly detection
 
-### AST09: 无治理（MEDIUM）
+### AST09: No Governance (MEDIUM)
 
-**风险**：缺少技能清单、审批流程、审计日志和身份控制。
+**Risk**: Missing skill inventory, approval workflows, audit logs, and identity controls.
 
-**预防**：
-- 维护跨平台的技能清单
-- 实施审批流程
-- 启用结构化审计日志
+**Prevention**:
+- Maintain cross-platform skill inventories
+- Implement approval workflows
+- Enable structured audit logs
 
-### AST10: 跨平台复用（MEDIUM）
+### AST10: Cross-Platform Reuse (MEDIUM)
 
-**风险**：为一个平台设计的技能直接移植到另一个平台，绕过安全审查。
+**Risk**: Skills designed for one platform directly ported to another, bypassing security review.
 
-**预防**：
-- 采用通用技能格式（Universal Skill Format YAML）
-- 每个目标平台要求独立的风险评估
-- 每个平台使用独立的签名密钥
-
----
-
-## 6. 开发自查清单
-
-在提交代码到 skills.sh 之前，逐项检查：
-
-### 代码安全
-
-- [ ] 不使用 `eval()`、`exec()`、`vm.runInNewContext()`、`Function()` 等动态代码执行
-- [ ] 不使用 `shell=True` 的 subprocess 调用
-- [ ] subprocess 使用列表参数而非字符串拼接
-- [ ] 不使用 `yaml.load()`（改用 `yaml.safe_load()`）
-- [ ] JSON 解析使用标准 `json.loads()`
-- [ ] 不包含硬编码凭证、API Key、密码
-
-### 路径处理
-
-- [ ] 不包含硬编码绝对路径（`/Users/xxx/...`、`/home/xxx/...`）
-- [ ] 所有路径使用 `Path.home()`、`Path(__file__).resolve()` 或环境变量动态计算
-- [ ] Hook 配置使用模板占位符（`{{SKILL_DIR}}`），安装时渲染
-- [ ] 不泄露开发者环境信息
-
-### 输入处理
-
-- [ ] 文本输入有长度限制（防止超大输入）
-- [ ] 递归解析有深度限制（防止嵌套攻击）
-- [ ] 来自外部的数据经过清洗后才用于决策
-- [ ] 命令参数不包含用户可控的未校验输入
-
-### 权限与数据
-
-- [ ] 数据访问范围与技能文档声明一致
-- [ ] 不访问超出功能范围的敏感文件
-- [ ] 不将敏感数据外传到网络
-- [ ] 持久化/hook 注入行为在文档中明确声明
-- [ ] 持久化需要用户显式运行启用脚本
-
-### 供应链
-
-- [ ] 不从外部下载并执行未知代码
-- [ ] 所有依赖可审计
-- [ ] 关键脚本内容在仓库中可见
-- [ ] 文件路径基于安装位置动态计算
-
-### 文件与配置
-
-- [ ] `.gitignore` 包含 `.env`、`__pycache__/`、`data/` 等生成产物
-- [ ] 不包含编译产物或缓存文件
-- [ ] 许可证文件存在且合规
+**Prevention**:
+- Adopt Universal Skill Format YAML
+- Require independent risk assessments for each target platform
+- Use separate signing keys per platform
 
 ---
 
-## 7. 已知修复记录
+## 6. Developer Self-Check Checklist
 
-### 2026-04-09: 修复 Agent Trust Hub + Socket 双重警告
+Check each item before submitting code to skills.sh:
 
-**问题**：
-1. Agent Trust Hub (MEDIUM Warn)：
-   - `check_activation.py` 使用 `vm.runInNewContext()` 动态代码执行
-   - `collect.py` 硬编码路径 `/Users/zhangweiteng/...`
-   - `collect.py` 缺少输入清洗（prompt injection 攻击面）
-   - Hook 配置硬编码绝对路径泄露开发环境
+### Code Security
 
-2. Socket (3x LOW Warn)：
-   - `hooks/claude/hooks.json` 硬编码绝对路径
-   - `hooks/gemini/settings.json` 硬编码绝对路径
-   - `hooks/windsurf/hooks.json` 硬编码绝对路径
+- [ ] No use of `eval()`, `exec()`, `vm.runInNewContext()`, `Function()`, or other dynamic code execution
+- [ ] No `shell=True` subprocess calls
+- [ ] Subprocess uses list arguments, not string concatenation
+- [ ] No use of `yaml.load()` (use `yaml.safe_load()` instead)
+- [ ] JSON parsing uses standard `json.loads()`
+- [ ] No hardcoded credentials, API keys, or passwords
 
-**修复**：
-- 移除 `vm.runInNewContext()`，替换为纯 Python JSON5 安全解析
-- 硬编码路径替换为 `Path.home()` 动态路径
-- 添加 `_sanitize_fragment()` 长度截断 + `_MAX_RECURSION_DEPTH` 递归深度限制
-- Hook 配置改用 `{{SKILL_DIR}}` 模板占位符
-- `enable_governor.py` 新增 `render_hook_templates()` 安装时渲染
+### Path Handling
 
-**提交**：`05e5e0e` fix(security): 修复 Agent Trust Hub 和 Socket 安全审计警告
+- [ ] No hardcoded absolute paths (`/Users/xxx/...`, `/home/xxx/...`)
+- [ ] All paths computed dynamically using `Path.home()`, `Path(__file__).resolve()`, or environment variables
+- [ ] Hook configs use template placeholders (`{{SKILL_DIR}}`), rendered at install time
+- [ ] No developer environment information leaked
+
+### Input Handling
+
+- [ ] Text input has length limits (prevents oversized input)
+- [ ] Recursive parsing has depth limits (prevents nesting attacks)
+- [ ] External data is sanitized before use in decision logic
+- [ ] Command arguments do not contain unvalidated user-controllable input
+
+### Permissions and Data
+
+- [ ] Data access scope matches the skill's documented functionality
+- [ ] No access to sensitive files beyond functional scope
+- [ ] Sensitive data not transmitted over the network
+- [ ] Persistence/hook injection behavior explicitly declared in documentation
+- [ ] Persistence requires user to explicitly run an enablement script
+
+### Supply Chain
+
+- [ ] No downloading and executing unknown code from external sources
+- [ ] All dependencies are auditable
+- [ ] Critical script contents visible in the repository
+- [ ] File paths computed dynamically based on install location
+
+### Files and Configuration
+
+- [ ] `.gitignore` includes `.env`, `__pycache__/`, `data/`, and other generated artifacts
+- [ ] No compiled artifacts or cache files included
+- [ ] License file exists and is compliant
 
 ---
 
-## 参考链接
+## 7. Known Fix Records
 
-- [skills.sh 安全审计页面](https://skills.sh/audits)
-- [Gen Agent Trust Hub 合作公告](https://newsroom.gendigital.com/2026-02-17-Gen-and-Vercel-Partner-to-Bring-Independent-Safety-Verification-to-the-AI-Skills-Ecosystem)
-- [Socket 供应链安全博客](https://socket.dev/blog/socket-brings-supply-chain-security-to-skills)
+### 2026-04-09: Fixed Agent Trust Hub + Socket Dual Warnings
+
+**Issues**:
+1. Agent Trust Hub (MEDIUM Warn):
+   - `check_activation.py` used `vm.runInNewContext()` dynamic code execution
+   - `collect.py` hardcoded path `/Users/zhangweiteng/...`
+   - `collect.py` lacked input sanitization (prompt injection attack surface)
+   - Hook configs hardcoded absolute paths, leaking dev environment
+
+2. Socket (3x LOW Warn):
+   - `hooks/claude/hooks.json` hardcoded absolute path
+   - `hooks/gemini/settings.json` hardcoded absolute path
+   - `hooks/windsurf/hooks.json` hardcoded absolute path
+
+**Fixes**:
+- Removed `vm.runInNewContext()`, replaced with pure Python JSON5 safe parsing
+- Hardcoded paths replaced with `Path.home()` dynamic paths
+- Added `_sanitize_fragment()` length truncation + `_MAX_RECURSION_DEPTH` recursion depth limit
+- Hook configs switched to `{{SKILL_DIR}}` template placeholders
+- `enable_governor.py` added `render_hook_templates()` for install-time rendering
+
+**Commit**: `05e5e0e` fix(security): fix Agent Trust Hub and Socket security audit warnings
+
+---
+
+## References
+
+- [skills.sh Security Audit Page](https://skills.sh/audits)
+- [Gen Agent Trust Hub Partnership Announcement](https://newsroom.gendigital.com/2026-02-17-Gen-and-Vercel-Partner-to-Bring-Independent-Safety-Verification-to-the-AI-Skills-Ecosystem)
+- [Socket Supply Chain Security Blog](https://socket.dev/blog/socket-brings-supply-chain-security-to-skills)
 - [OWASP Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/)
 - [Agent Skill Trust & Signing Service](https://kenhuangus.substack.com/p/agent-skill-trust-and-signing-service)

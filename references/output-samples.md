@@ -1,6 +1,6 @@
-# 输出样本 / Output Samples
+# Output Samples
 
-## usage_stats.json 样本
+## usage_stats.json Sample
 
 ```json
 {
@@ -38,30 +38,30 @@
 }
 ```
 
-## report-latest.md 样本
+## report-latest.md Sample
 
 ```markdown
-# 技能使用报告 — 2026-04-04
+# Skill Usage Report — 2026-04-04
 
-## 最近常用
-1. tmux — 最近 7 天使用 12 次
-2. codex — 最近 7 天使用 8 次
-3. transcendence-memory — 最近 7 天使用 5 次
+## Recently Active
+1. tmux — 12 uses in the past 7 days
+2. codex — 8 uses in the past 7 days
+3. transcendence-memory — 5 uses in the past 7 days
 
-## 较少使用
-- rag-everything-enhancer — 30 天仅使用 2 次
-- acpx — 30 天仅使用 1 次
+## Infrequently Used
+- rag-everything-enhancer — only 2 uses in 30 days
+- acpx — only 1 use in 30 days
 
-## 归档候选
-- acpx（总使用 3 次，近 30 天仅 1 次）
+## Archive Candidates
+- acpx (3 total uses, only 1 in the past 30 days)
 
-## 受保护（不参与归档判断）
+## Protected (excluded from archive evaluation)
 - skill-usage-governor
 - long-running-agent
 - self-improvement
 ```
 
-## archive-manifest.json 样本
+## archive-manifest.json Sample
 
 ```json
 {
