@@ -14,6 +14,10 @@ SNAPSHOT_DIRNAME = 'snapshot'
 parser = argparse.ArgumentParser()
 parser.add_argument('--dry-run', action='store_true')
 parser.add_argument('--live', action='store_true')
+parser.add_argument(
+    '--scope', type=str, default='all',
+    help='治理范围：all（全部）| cli:<name>（如 cli:claude-code）| dir:<path>（指定目录）',
+)
 args = parser.parse_args()
 
 if args.dry_run and args.live:
@@ -91,6 +95,7 @@ def resolve_archive_root(base: Path, root_value) -> Path:
 
 BASE = Path(__file__).resolve().parents[1]
 WORKSPACE = BASE.parents[1]
+# 归档仅限用户自有技能目录，不动插件缓存
 SKILLS_DIR = WORKSPACE / 'skills'
 DATA = BASE / 'data'
 CONFIG = BASE / 'config' / 'policy.yaml'
@@ -135,6 +140,28 @@ candidates = [
     row for row in filtered_rows
     if row.get('total_uses', 0) <= max_total_uses and row['skill'] in trailing_skills
 ]
+
+# 按 --scope 过滤候选技能
+scope = args.scope
+if scope != 'all':
+    if scope.startswith('cli:'):
+        scope_cli = scope[4:]
+        candidates = [
+            row for row in candidates
+            if row.get('source_cli', 'unknown') == scope_cli
+        ]
+        print(f'scope: 仅治理 CLI "{scope_cli}" 下的技能')
+    elif scope.startswith('dir:'):
+        scope_dir = str(Path(scope[4:]).expanduser().resolve())
+        candidates = [
+            row for row in candidates
+            if str(Path(row.get('source_dir', '')).resolve()).startswith(scope_dir)
+        ]
+        print(f'scope: 仅治理目录 "{scope_dir}" 下的技能')
+    else:
+        print(f'未知 scope 格式：{scope}，使用 all / cli:<name> / dir:<path>')
+        raise SystemExit(1)
+
 candidates = sorted(
     candidates,
     key=lambda x: (
@@ -155,7 +182,8 @@ print(
 )
 for row in candidates:
     trailing_tag = ' trailing-percentile' if row['skill'] in trailing_skills else ''
-    print(f"- {row['skill']} (total={row.get('total_uses', 0)}{trailing_tag})")
+    cli_tag = f" [{row.get('source_cli', '?')}]" if row.get('source_cli') else ''
+    print(f"- {row['skill']} (total={row.get('total_uses', 0)}{trailing_tag}){cli_tag}")
 if is_dry_run:
     print(
         f'trailing percentile context: percentile={trailing_percentile} cut_count={trailing_cut_count} '
@@ -176,11 +204,33 @@ if snapshot_before_move:
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 manifest_rows = []
 archived = 0
+# 安全边界：只允许归档用户自有技能目录中的技能，不操作插件缓存
+SAFE_ARCHIVE_DIRS = {
+    str(Path.home() / '.openclaw' / 'workspace' / 'skills'),
+    str(Path.home() / '.claude' / 'skills'),
+    str(Path.home() / '.codex' / 'skills'),
+    str(Path.home() / '.gemini' / 'skills'),
+    str(Path.home() / '.cursor' / 'skills'),
+    str(SKILLS_DIR.resolve()),
+}
+
 for row in candidates:
     skill = row['skill']
-    src = SKILLS_DIR / skill
+    # 优先从 source_dir 定位技能，兜底使用 SKILLS_DIR
+    source_dir = row.get('source_dir', '')
+    if source_dir:
+        src = Path(source_dir) / skill
+    else:
+        src = SKILLS_DIR / skill
+    if not src.exists():
+        src = SKILLS_DIR / skill
     if not src.exists():
         print(f'skip missing skill directory: {src}')
+        continue
+    # 安全检查：不允许从插件缓存或非自有目录归档
+    src_parent = str(src.parent.resolve())
+    if src_parent not in SAFE_ARCHIVE_DIRS:
+        print(f'skip {skill}: 来源目录 {src_parent} 不在安全归档范围内（插件缓存不可归档）')
         continue
     dest = archive_batch_dir / skill
     if dest.exists():

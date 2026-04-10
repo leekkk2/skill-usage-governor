@@ -5,6 +5,9 @@ import re
 from pathlib import Path
 from datetime import datetime, timezone
 
+import subprocess
+import sys
+
 BASE = Path(__file__).resolve().parents[1]
 WORKSPACE = BASE.parents[1]
 DATA = BASE / 'data'
@@ -22,7 +25,7 @@ SESSIONS_DIRS_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSIONS_DIRS')
 SESSIONS_DIR_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSIONS_DIR')
 SESSION_LIMIT_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSION_LIMIT')
 SESSION_SINCE_ENV = os.environ.get('OPENCLAW_SKILL_USAGE_SESSION_SINCE')
-SKILLS_DIR = WORKSPACE / 'skills'
+EXTRA_SKILL_DIRS_ENV = os.environ.get('SKILL_USAGE_EXTRA_SKILL_DIRS', '').strip()
 IGNORE_PREFIXES = tuple(filter(None, [part.strip() for part in os.environ.get('OPENCLAW_SKILL_USAGE_IGNORE_PREFIXES', 'zz-,tmp-,test-,e2e-').split(',')]))
 IGNORE_NAMES = {part.strip() for part in os.environ.get('OPENCLAW_SKILL_USAGE_IGNORE_NAMES', '').split(',') if part.strip()}
 
@@ -34,10 +37,81 @@ def is_ignored_skill_dir(path: Path) -> bool:
     return any(name.startswith(prefix) for prefix in IGNORE_PREFIXES)
 
 
-SKILL_NAMES = sorted([
-    p.name for p in SKILLS_DIR.iterdir()
+def _load_policy_skill_dirs() -> list[str]:
+    """从 policy.yaml 读取 extra_skill_dirs 配置。"""
+    policy_file = BASE / 'config' / 'policy.yaml'
+    if not policy_file.exists():
+        return []
+    dirs = []
+    in_section = False
+    with policy_file.open('r', encoding='utf-8') as f:
+        for raw in f:
+            line = raw.rstrip('\n')
+            stripped = line.strip()
+            if not line.startswith(' ') and not line.startswith('\t'):
+                in_section = stripped == 'extra_skill_dirs:'
+                continue
+            if in_section and stripped.startswith('- '):
+                dirs.append(stripped[2:].strip())
+    return dirs
+
+
+def _resolve_all_skill_dirs() -> list[Path]:
+    """通过 detect_clis.py 自动检测 + policy 配置 + 环境变量，汇总所有技能目录。"""
+    detect_script = BASE / 'scripts' / 'detect_clis.py'
+    all_dirs = []
+    seen = set()
+
+    # 1) 自动检测
+    if detect_script.exists():
+        try:
+            result = subprocess.run(
+                [sys.executable, str(detect_script)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                for d_str in data.get('all_skill_dirs', []):
+                    d = Path(d_str).resolve()
+                    if d.exists() and str(d) not in seen:
+                        seen.add(str(d))
+                        all_dirs.append(d)
+        except Exception:
+            pass
+
+    # 2) policy.yaml 中的 extra_skill_dirs
+    for d_str in _load_policy_skill_dirs():
+        d = Path(d_str).expanduser().resolve()
+        if d.exists() and str(d) not in seen:
+            seen.add(str(d))
+            all_dirs.append(d)
+
+    # 3) 环境变量 SKILL_USAGE_EXTRA_SKILL_DIRS（冒号/分号分隔）
+    if EXTRA_SKILL_DIRS_ENV:
+        for part in EXTRA_SKILL_DIRS_ENV.split(os.pathsep):
+            d = Path(part.strip()).expanduser().resolve()
+            if d.exists() and str(d) not in seen:
+                seen.add(str(d))
+                all_dirs.append(d)
+
+    # 4) 兜底：原始单目录
+    fallback = (WORKSPACE / 'skills').resolve()
+    if fallback.exists() and str(fallback) not in seen:
+        seen.add(str(fallback))
+        all_dirs.append(fallback)
+
+    return all_dirs
+
+
+SKILL_DIRS = _resolve_all_skill_dirs()
+
+SKILL_NAMES = sorted(set(
+    p.name
+    for skill_dir in SKILL_DIRS
+    if skill_dir.exists()
+    for p in skill_dir.iterdir()
     if p.is_dir() and (p / 'SKILL.md').exists() and not is_ignored_skill_dir(p)
-]) if SKILLS_DIR.exists() else []
+))
 SKILL_NAME_SET = set(SKILL_NAMES)
 SKILL_TOKEN_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*')
 
@@ -315,12 +389,12 @@ def write_checkpoint(events, session_files):
     return checkpoint_path
 
 
-_MAX_FRAGMENT_LEN = 50_000  # Max length per text fragment to prevent oversized input
-_MAX_RECURSION_DEPTH = 10   # Max recursion depth to prevent nesting attacks
+_MAX_FRAGMENT_LEN = 50_000  # 单个文本片段最大长度，防止超大输入
+_MAX_RECURSION_DEPTH = 10   # 最大递归深度，防止嵌套攻击
 
 
 def _sanitize_fragment(text: str) -> str:
-    """Sanitize text fragment by truncating oversized content"""
+    """清洗文本片段，截断过长内容"""
     if len(text) > _MAX_FRAGMENT_LEN:
         text = text[:_MAX_FRAGMENT_LEN]
     return text

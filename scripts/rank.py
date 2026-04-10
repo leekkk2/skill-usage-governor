@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 import json
 import math
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1]
 WORKSPACE = BASE.parents[1]
-SKILLS_DIR = WORKSPACE / 'skills'
 DATA = BASE / 'data'
 CONFIG = BASE / 'config'
 events = DATA / 'usage_events.jsonl'
@@ -25,10 +26,63 @@ def is_ignored_skill_dir(path: Path) -> bool:
     return any(name.startswith(prefix) for prefix in IGNORE_PREFIXES)
 
 
-ALL_SKILLS = sorted([
-    p.name for p in SKILLS_DIR.iterdir()
+def _resolve_all_skill_dirs() -> list[Path]:
+    """通过 detect_clis.py 自动检测所有技能目录，兜底使用 WORKSPACE/skills。"""
+    detect_script = BASE / 'scripts' / 'detect_clis.py'
+    all_dirs = []
+    seen = set()
+    if detect_script.exists():
+        try:
+            result = subprocess.run(
+                [sys.executable, str(detect_script)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                for d_str in data.get('all_skill_dirs', []):
+                    d = Path(d_str).resolve()
+                    if d.exists() and str(d) not in seen:
+                        seen.add(str(d))
+                        all_dirs.append(d)
+        except Exception:
+            pass
+    fallback = (WORKSPACE / 'skills').resolve()
+    if fallback.exists() and str(fallback) not in seen:
+        all_dirs.append(fallback)
+    return all_dirs
+
+
+def _build_skill_source_map() -> dict[str, dict]:
+    """构建技能名到来源信息的映射：{skill: {source_cli, source_dir}}。"""
+    detect_script = BASE / 'scripts' / 'detect_clis.py'
+    source_map = {}
+    if detect_script.exists():
+        try:
+            result = subprocess.run(
+                [sys.executable, str(detect_script)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                for skill_name, info in data.get('all_skills', {}).items():
+                    source_map[skill_name] = {
+                        'source_cli': info.get('source', 'unknown'),
+                        'source_dir': info.get('dir', ''),
+                    }
+        except Exception:
+            pass
+    return source_map
+
+
+SKILL_SOURCE_MAP = _build_skill_source_map()
+
+ALL_SKILLS = sorted(set(
+    p.name
+    for skill_dir in _resolve_all_skill_dirs()
+    if skill_dir.exists()
+    for p in skill_dir.iterdir()
     if p.is_dir() and (p / 'SKILL.md').exists() and not is_ignored_skill_dir(p)
-]) if SKILLS_DIR.exists() else []
+))
 
 ACTIVATION_EVENTS = {
     'skill_activation_detected',
@@ -125,6 +179,8 @@ activation_7d_bonus = float(activation_weights.get('activation_7d_bonus', 2.0) o
 by_skill = {
     skill: {
         'skill': skill,
+        'source_cli': SKILL_SOURCE_MAP.get(skill, {}).get('source_cli', 'unknown'),
+        'source_dir': SKILL_SOURCE_MAP.get(skill, {}).get('source_dir', ''),
         'total_uses': 0,
         'uses_7d': 0,
         'uses_30d': 0,

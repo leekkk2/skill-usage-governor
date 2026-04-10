@@ -16,3 +16,10 @@ activation_weights:
 archive:
   root: skills_archive
   dry_run_default: true
+# 自动检测已安装 CLI 的技能目录（默认开启）
+cli_detection:
+  enabled: true
+# 手动添加额外技能目录（也可用环境变量 SKILL_USAGE_EXTRA_SKILL_DIRS）
+# extra_skill_dirs:
+#   - ~/my-custom-skills
+#   - /opt/shared-skills
